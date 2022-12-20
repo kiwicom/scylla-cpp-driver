@@ -14,7 +14,7 @@
   limitations under the License.
 */
 
-#include "dc_aware_policy.hpp"
+#include "rack_aware_policy.hpp"
 
 #include "logger.hpp"
 #include "request_handler.hpp"
@@ -26,9 +26,10 @@ using namespace datastax;
 using namespace datastax::internal;
 using namespace datastax::internal::core;
 
-DCAwarePolicy::DCAwarePolicy(const String& local_dc, size_t used_hosts_per_remote_dc,
+RackAwarePolicy::RackAwarePolicy(const String& local_dc, const String& local_rack, size_t used_hosts_per_remote_dc,
                              bool skip_remote_dcs_for_local_cl)
     : local_dc_(local_dc)
+    , local_rack_(local_rack)
     , used_hosts_per_remote_dc_(used_hosts_per_remote_dc)
     , skip_remote_dcs_for_local_cl_(skip_remote_dcs_for_local_cl)
     , local_dc_live_hosts_(new HostVec())
@@ -40,9 +41,9 @@ DCAwarePolicy::DCAwarePolicy(const String& local_dc, size_t used_hosts_per_remot
   }
 }
 
-DCAwarePolicy::~DCAwarePolicy() { uv_rwlock_destroy(&available_rwlock_); }
+RackAwarePolicy::~RackAwarePolicy() { uv_rwlock_destroy(&available_rwlock_); }
 
-void DCAwarePolicy::init(const Host::Ptr& connected_host, const HostMap& hosts, Random* random,
+void RackAwarePolicy::init(const Host::Ptr& connected_host, const HostMap& hosts, Random* random,
                          const String& local_dc, const String& local_rack) {
   if (local_dc_.empty()) { // Only override if no local DC was specified.
     local_dc_ = local_dc;
@@ -53,6 +54,17 @@ void DCAwarePolicy::init(const Host::Ptr& connected_host, const HostMap& hosts, 
              "(if this is incorrect, please provide the correct data center)",
              connected_host->dc().c_str());
     local_dc_ = connected_host->dc();
+  }
+
+  if (local_rack_.empty()) { // Only override if no local rack was specified.
+    local_rack_ = local_rack;
+  }
+
+  if (local_rack_.empty() && connected_host && !connected_host->rack().empty()) {
+    LOG_INFO("Using '%s' for the local rack "
+             "(if this is incorrect, please provide the correct rack)",
+             connected_host->rack().c_str());
+    local_rack_ = connected_host->rack();
   }
 
   available_.resize(hosts.size());
@@ -67,12 +79,12 @@ void DCAwarePolicy::init(const Host::Ptr& connected_host, const HostMap& hosts, 
   }
 }
 
-CassHostDistance DCAwarePolicy::distance(const Host::Ptr& host) const {
-  if (local_dc_.empty() || host->dc() == local_dc_) {
+CassHostDistance RackAwarePolicy::distance(const Host::Ptr& host) const {
+  if (local_dc_.empty() || local_rack_.empty() || (host->dc() == local_dc_ && host->rack() == local_rack_)) {
     return CASS_HOST_DISTANCE_LOCAL;
   }
 
-  const CopyOnWriteHostVec& hosts = per_remote_dc_live_hosts_.get_hosts(host->dc());
+  const CopyOnWriteHostVec& hosts = per_remote_dc_live_hosts_.get_hosts(host->rack());
   size_t num_hosts = std::min(hosts->size(), used_hosts_per_remote_dc_);
   for (size_t i = 0; i < num_hosts; ++i) {
     if ((*hosts)[i]->address() == host->address()) {
@@ -83,54 +95,62 @@ CassHostDistance DCAwarePolicy::distance(const Host::Ptr& host) const {
   return CASS_HOST_DISTANCE_IGNORE;
 }
 
-QueryPlan* DCAwarePolicy::new_query_plan(const String& keyspace, RequestHandler* request_handler,
+QueryPlan* RackAwarePolicy::new_query_plan(const String& keyspace, RequestHandler* request_handler,
                                          const TokenMap* token_map) {
   CassConsistency cl =
       request_handler != NULL ? request_handler->consistency() : CASS_DEFAULT_CONSISTENCY;
-  return new DCAwareQueryPlan(this, cl, index_++);
+  return new RackAwareQueryPlan(this, cl, index_++);
 }
 
-bool DCAwarePolicy::is_host_up(const Address& address) const {
+bool RackAwarePolicy::is_host_up(const Address& address) const {
   ScopedReadLock rl(&available_rwlock_);
   return available_.count(address) > 0;
 }
 
-void DCAwarePolicy::on_host_added(const Host::Ptr& host) {
+void RackAwarePolicy::on_host_added(const Host::Ptr& host) {
   const String& dc = host->dc();
+  const String& rack = host->rack();
   if (local_dc_.empty() && !dc.empty()) {
     LOG_INFO("Using '%s' for local data center "
              "(if this is incorrect, please provide the correct data center)",
              host->dc().c_str());
     local_dc_ = dc;
   }
+  if (local_rack_.empty() && !rack.empty()) {
+    LOG_INFO("Using '%s' for local data center "
+             "(if this is incorrect, please provide the correct data center)",
+             host->rack().c_str());
+    local_rack_ = rack;
+  }
 
-  if (dc == local_dc_) {
+  if (dc == local_dc_ && rack == local_rack_) {
     add_host(local_dc_live_hosts_, host);
   } else {
-    per_remote_dc_live_hosts_.add_host_to_dc(dc, host);
+    per_remote_dc_live_hosts_.add_host_to_dc(rack, host);
   }
 }
 
-void DCAwarePolicy::on_host_removed(const Host::Ptr& host) {
+void RackAwarePolicy::on_host_removed(const Host::Ptr& host) {
   const String& dc = host->dc();
-  if (dc == local_dc_) {
+  const String& rack = host->rack();
+  if (dc == local_dc_ && rack == local_rack_) {
     remove_host(local_dc_live_hosts_, host);
   } else {
-    per_remote_dc_live_hosts_.remove_host_from_dc(host->dc(), host);
+    per_remote_dc_live_hosts_.remove_host_from_dc(host->rack(), host);
   }
 
   ScopedWriteLock wl(&available_rwlock_);
   available_.erase(host->address());
 }
 
-void DCAwarePolicy::on_host_up(const Host::Ptr& host) {
+void RackAwarePolicy::on_host_up(const Host::Ptr& host) {
   on_host_added(host);
 
   ScopedWriteLock wl(&available_rwlock_);
   available_.insert(host->address());
 }
 
-void DCAwarePolicy::on_host_down(const Address& address) {
+void RackAwarePolicy::on_host_down(const Address& address) {
   if (!remove_host(local_dc_live_hosts_, address) &&
       !per_remote_dc_live_hosts_.remove_host(address)) {
     LOG_DEBUG("Attempted to mark host %s as DOWN, but it doesn't exist",
@@ -141,22 +161,27 @@ void DCAwarePolicy::on_host_down(const Address& address) {
   available_.erase(address);
 }
 
-bool DCAwarePolicy::skip_remote_dcs_for_local_cl() const {
+bool RackAwarePolicy::skip_remote_dcs_for_local_cl() const {
   ScopedReadLock rl(&available_rwlock_);
   return skip_remote_dcs_for_local_cl_;
 }
 
-size_t DCAwarePolicy::used_hosts_per_remote_dc() const {
+size_t RackAwarePolicy::used_hosts_per_remote_dc() const {
   ScopedReadLock rl(&available_rwlock_);
   return used_hosts_per_remote_dc_;
 }
 
-const String& DCAwarePolicy::local_dc() const {
+const String& RackAwarePolicy::local_dc() const {
   ScopedReadLock rl(&available_rwlock_);
   return local_dc_;
 }
 
-void DCAwarePolicy::PerDCHostMap::add_host_to_dc(const String& dc, const Host::Ptr& host) {
+const String& RackAwarePolicy::local_rack() const {
+  ScopedReadLock rl(&available_rwlock_);
+  return local_rack_;
+}
+
+void RackAwarePolicy::PerDCHostMap::add_host_to_dc(const String& dc, const Host::Ptr& host) {
   ScopedWriteLock wl(&rwlock_);
   Map::iterator i = map_.find(dc);
   if (i == map_.end()) {
@@ -168,7 +193,7 @@ void DCAwarePolicy::PerDCHostMap::add_host_to_dc(const String& dc, const Host::P
   }
 }
 
-void DCAwarePolicy::PerDCHostMap::remove_host_from_dc(const String& dc, const Host::Ptr& host) {
+void RackAwarePolicy::PerDCHostMap::remove_host_from_dc(const String& dc, const Host::Ptr& host) {
   ScopedWriteLock wl(&rwlock_);
   Map::iterator i = map_.find(dc);
   if (i != map_.end()) {
@@ -176,7 +201,7 @@ void DCAwarePolicy::PerDCHostMap::remove_host_from_dc(const String& dc, const Ho
   }
 }
 
-bool DCAwarePolicy::PerDCHostMap::remove_host(const Address& address) {
+bool RackAwarePolicy::PerDCHostMap::remove_host(const Address& address) {
   ScopedWriteLock wl(&rwlock_);
   for (Map::iterator i = map_.begin(), end = map_.end(); i != end; ++i) {
     if (core::remove_host(i->second, address)) {
@@ -186,7 +211,7 @@ bool DCAwarePolicy::PerDCHostMap::remove_host(const Address& address) {
   return false;
 }
 
-const CopyOnWriteHostVec& DCAwarePolicy::PerDCHostMap::get_hosts(const String& dc) const {
+const CopyOnWriteHostVec& RackAwarePolicy::PerDCHostMap::get_hosts(const String& dc) const {
   ScopedReadLock rl(&rwlock_);
   Map::const_iterator i = map_.find(dc);
   if (i == map_.end()) return no_hosts_;
@@ -194,7 +219,7 @@ const CopyOnWriteHostVec& DCAwarePolicy::PerDCHostMap::get_hosts(const String& d
   return i->second;
 }
 
-void DCAwarePolicy::PerDCHostMap::copy_dcs(KeySet* dcs) const {
+void RackAwarePolicy::PerDCHostMap::copy_dcs(KeySet* dcs) const {
   ScopedReadLock rl(&rwlock_);
   for (Map::const_iterator i = map_.begin(), end = map_.end(); i != end; ++i) {
     dcs->insert(i->first);
@@ -214,7 +239,7 @@ static const Host::Ptr& get_next_host_bounded(const CopyOnWriteHostVec& hosts, s
 
 static size_t get_hosts_size(const CopyOnWriteHostVec& hosts) { return hosts->size(); }
 
-DCAwarePolicy::DCAwareQueryPlan::DCAwareQueryPlan(const DCAwarePolicy* policy, CassConsistency cl,
+RackAwarePolicy::RackAwareQueryPlan::RackAwareQueryPlan(const RackAwarePolicy* policy, CassConsistency cl,
                                                   size_t start_index)
     : policy_(policy)
     , cl_(cl)
@@ -223,7 +248,7 @@ DCAwarePolicy::DCAwareQueryPlan::DCAwareQueryPlan(const DCAwarePolicy* policy, C
     , remote_remaining_(0)
     , index_(start_index) {}
 
-Host::Ptr DCAwarePolicy::DCAwareQueryPlan::compute_next() {
+Host::Ptr RackAwarePolicy::RackAwareQueryPlan::compute_next() {
   while (local_remaining_ > 0) {
     --local_remaining_;
     const Host::Ptr& host(get_next_host(hosts_, index_++));

@@ -14,8 +14,8 @@
   limitations under the License.
 */
 
-#ifndef DATASTAX_INTERNAL_DC_AWARE_POLICY_HPP
-#define DATASTAX_INTERNAL_DC_AWARE_POLICY_HPP
+#ifndef DATASTAX_INTERNAL_RACK_AWARE_POLICY_HPP
+#define DATASTAX_INTERNAL_RACK_AWARE_POLICY_HPP
 
 #include "host.hpp"
 #include "load_balancing.hpp"
@@ -29,12 +29,12 @@
 
 namespace datastax { namespace internal { namespace core {
 
-class DCAwarePolicy : public LoadBalancingPolicy {
+class RackAwarePolicy : public LoadBalancingPolicy {
 public:
-  DCAwarePolicy(const String& local_dc = "", size_t used_hosts_per_remote_dc = 0,
+  RackAwarePolicy(const String& local_dc = "", const String &local_rack = "", size_t used_hosts_per_remote_dc = 0,
                 bool skip_remote_dcs_for_local_cl = true);
 
-  ~DCAwarePolicy();
+  ~RackAwarePolicy();
 
   virtual void init(const Host::Ptr& connected_host, const HostMap& hosts, Random* random,
                     const String& local_dc, const String& local_rack);
@@ -54,9 +54,10 @@ public:
   virtual bool skip_remote_dcs_for_local_cl() const;
   virtual size_t used_hosts_per_remote_dc() const;
   virtual const String& local_dc() const;
+  virtual const String& local_rack() const;
 
   virtual LoadBalancingPolicy* new_instance() {
-    return new DCAwarePolicy(local_dc_, used_hosts_per_remote_dc_, skip_remote_dcs_for_local_cl_);
+    return new RackAwarePolicy(local_dc_, local_rack_, used_hosts_per_remote_dc_, skip_remote_dcs_for_local_cl_);
   }
 
 private:
@@ -90,14 +91,14 @@ private:
   void get_remote_dcs(PerDCHostMap::KeySet* remote_dcs) const;
 
 public:
-  class DCAwareQueryPlan : public QueryPlan {
+  class RackAwareQueryPlan : public QueryPlan {
   public:
-    DCAwareQueryPlan(const DCAwarePolicy* policy, CassConsistency cl, size_t start_index);
+    RackAwareQueryPlan(const RackAwarePolicy* policy, CassConsistency cl, size_t start_index);
 
     virtual Host::Ptr compute_next();
 
   private:
-    const DCAwarePolicy* policy_;
+    const RackAwarePolicy* policy_;
     CassConsistency cl_;
     CopyOnWriteHostVec hosts_;
     ScopedPtr<PerDCHostMap::KeySet> remote_dcs_;
@@ -111,6 +112,7 @@ private:
   AddressSet available_;
 
   String local_dc_;
+  String local_rack_;
   size_t used_hosts_per_remote_dc_;
   bool skip_remote_dcs_for_local_cl_;
 
@@ -119,7 +121,7 @@ private:
   size_t index_;
 
 private:
-  DISALLOW_COPY_AND_ASSIGN(DCAwarePolicy);
+  DISALLOW_COPY_AND_ASSIGN(RackAwarePolicy);
 };
 
 }}} // namespace datastax::internal::core
