@@ -87,8 +87,8 @@ QueryPlan* TokenAwarePolicy::new_query_plan(const String& keyspace, RequestHandl
 }
 
 Host::Ptr TokenAwarePolicy::TokenAwareQueryPlan::compute_next() {
-  while (remaining_ > 0) {
-    --remaining_;
+  while (remaining_local_ > 0) {
+    --remaining_local_;
     const Host::Ptr& host((*replicas_)[index_++ % replicas_->size()]);
     if (child_policy_->is_host_up(host->address()) &&
         child_policy_->distance(host) == CASS_HOST_DISTANCE_LOCAL) {
@@ -96,10 +96,19 @@ Host::Ptr TokenAwarePolicy::TokenAwareQueryPlan::compute_next() {
     }
   }
 
+  while (remaining_remote_ > 0) {
+    --remaining_remote_;
+    const Host::Ptr& host((*replicas_)[index_++ % replicas_->size()]);
+    if (child_policy_->is_host_up(host->address()) &&
+        child_policy_->distance(host) == CASS_HOST_DISTANCE_REMOTE) {
+      return host;
+    }
+  }
+
   Host::Ptr host;
   while ((host = child_plan_->compute_next())) {
     if (!contains(replicas_, host->address()) ||
-        child_policy_->distance(host) != CASS_HOST_DISTANCE_LOCAL) {
+        child_policy_->distance(host) > CASS_HOST_DISTANCE_REMOTE) {
       return host;
     }
   }

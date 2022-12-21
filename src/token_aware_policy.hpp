@@ -53,7 +53,8 @@ private:
         , child_plan_(child_plan)
         , replicas_(replicas)
         , index_(start_index)
-        , remaining_(replicas->size()) {}
+        , remaining_local_(replicas->size())
+        , remaining_remote_(replicas->size()) {}
 
     Host::Ptr compute_next();
 
@@ -62,7 +63,8 @@ private:
     ScopedPtr<QueryPlan> child_plan_;
     CopyOnWriteHostVec replicas_;
     size_t index_;
-    size_t remaining_;
+    size_t remaining_local_;
+    size_t remaining_remote_;
   };
 
   Random* random_;

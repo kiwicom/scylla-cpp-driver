@@ -58,22 +58,22 @@ public:
   }
 
 private:
-  class PerDCHostMap {
+  class PerKeyHostMap {
   public:
     typedef internal::Map<String, CopyOnWriteHostVec> Map;
     typedef Set<String> KeySet;
 
-    PerDCHostMap()
+    PerKeyHostMap()
         : no_hosts_(new HostVec()) {
       uv_rwlock_init(&rwlock_);
     }
-    ~PerDCHostMap() { uv_rwlock_destroy(&rwlock_); }
+    ~PerKeyHostMap() { uv_rwlock_destroy(&rwlock_); }
 
-    void add_host_to_dc(const String& dc, const Host::Ptr& host);
-    void remove_host_from_dc(const String& dc, const Host::Ptr& host);
+    void add_host_to_key(const String& key, const Host::Ptr& host);
+    void remove_host_from_key(const String& key, const Host::Ptr& host);
     bool remove_host(const Address& address);
-    const CopyOnWriteHostVec& get_hosts(const String& dc) const;
-    void copy_dcs(KeySet* dcs) const;
+    const CopyOnWriteHostVec& get_hosts(const String& key) const;
+    void copy_keys(KeySet* keys) const;
 
   private:
     Map map_;
@@ -81,11 +81,11 @@ private:
     const CopyOnWriteHostVec no_hosts_;
 
   private:
-    DISALLOW_COPY_AND_ASSIGN(PerDCHostMap);
+    DISALLOW_COPY_AND_ASSIGN(PerKeyHostMap);
   };
 
   const CopyOnWriteHostVec& get_local_dc_hosts() const;
-  void get_remote_dcs(PerDCHostMap::KeySet* remote_dcs) const;
+  void get_remote_dcs(PerKeyHostMap::KeySet* remote_dcs) const;
 
 public:
   class RackAwareQueryPlan : public QueryPlan {
@@ -98,7 +98,8 @@ public:
     const RackAwarePolicy* policy_;
     CassConsistency cl_;
     CopyOnWriteHostVec hosts_;
-    ScopedPtr<PerDCHostMap::KeySet> remote_dcs_;
+    ScopedPtr<PerKeyHostMap::KeySet> remote_racks_;
+    ScopedPtr<PerKeyHostMap::KeySet> remote_dcs_;
     size_t local_remaining_;
     size_t remote_remaining_;
     size_t index_;
@@ -111,8 +112,10 @@ private:
   String local_dc_;
   String local_rack_;
 
-  CopyOnWriteHostVec local_dc_live_hosts_;
-  PerDCHostMap per_remote_dc_live_hosts_;
+  CopyOnWriteHostVec local_rack_live_hosts_;
+  // remote rack, local dc
+  PerKeyHostMap per_remote_rack_live_hosts_;
+  PerKeyHostMap per_remote_dc_live_hosts_;
   size_t index_;
 
 private:

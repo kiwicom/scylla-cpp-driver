@@ -43,6 +43,7 @@ typedef enum CassBalancingState_ {
 typedef enum CassHostDistance_ {
   CASS_HOST_DISTANCE_LOCAL,
   CASS_HOST_DISTANCE_REMOTE,
+  CASS_HOST_DISTANCE_REMOTE2,
   CASS_HOST_DISTANCE_IGNORE
 } CassHostDistance;
 

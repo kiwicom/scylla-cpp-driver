@@ -2216,15 +2216,13 @@ cass_cluster_set_load_balance_dc_aware_n(CassCluster* cluster,
 /**
  * Configures the cluster to use Rack-aware load balancing.
  * For each query, all live nodes in a primary 'local' rack are tried first,
- * followed by nodes from local DC and then any node from other DCs.
+ * followed by nodes from local DC and then nodes from other DCs.
  *
- * <b>Note:</b> This is the default, and does not need to be called unless
- * switching an existing from another policy or changing settings.
- * Without further configuration, a default local_dc and local_rack
+ * With empty local_rack and local_dc,  default local_dc and local_rack
  * is chosen from the first connected contact point,
  * and no remote hosts are considered in query plans.
  * If relying on this mechanism, be sure to use only contact
- * points from the local DC.
+ * points from the local rack.
  *
  * @public @memberof CassCluster
  *
