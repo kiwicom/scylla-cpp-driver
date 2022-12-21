@@ -31,8 +31,7 @@ namespace datastax { namespace internal { namespace core {
 
 class RackAwarePolicy : public LoadBalancingPolicy {
 public:
-  RackAwarePolicy(const String& local_dc = "", const String &local_rack = "", size_t used_hosts_per_remote_dc = 0,
-                bool skip_remote_dcs_for_local_cl = true);
+  RackAwarePolicy(const String& local_dc = "", const String &local_rack = "");
 
   ~RackAwarePolicy();
 
@@ -51,13 +50,11 @@ public:
   virtual void on_host_up(const Host::Ptr& host);
   virtual void on_host_down(const Address& address);
 
-  virtual bool skip_remote_dcs_for_local_cl() const;
-  virtual size_t used_hosts_per_remote_dc() const;
   virtual const String& local_dc() const;
   virtual const String& local_rack() const;
 
   virtual LoadBalancingPolicy* new_instance() {
-    return new RackAwarePolicy(local_dc_, local_rack_, used_hosts_per_remote_dc_, skip_remote_dcs_for_local_cl_);
+    return new RackAwarePolicy(local_dc_, local_rack_);
   }
 
 private:
@@ -113,8 +110,6 @@ private:
 
   String local_dc_;
   String local_rack_;
-  size_t used_hosts_per_remote_dc_;
-  bool skip_remote_dcs_for_local_cl_;
 
   CopyOnWriteHostVec local_dc_live_hosts_;
   PerDCHostMap per_remote_dc_live_hosts_;

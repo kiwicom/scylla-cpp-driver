@@ -26,19 +26,12 @@ using namespace datastax;
 using namespace datastax::internal;
 using namespace datastax::internal::core;
 
-RackAwarePolicy::RackAwarePolicy(const String& local_dc, const String& local_rack, size_t used_hosts_per_remote_dc,
-                             bool skip_remote_dcs_for_local_cl)
+RackAwarePolicy::RackAwarePolicy(const String& local_dc, const String& local_rack)
     : local_dc_(local_dc)
     , local_rack_(local_rack)
-    , used_hosts_per_remote_dc_(used_hosts_per_remote_dc)
-    , skip_remote_dcs_for_local_cl_(skip_remote_dcs_for_local_cl)
     , local_dc_live_hosts_(new HostVec())
     , index_(0) {
   uv_rwlock_init(&available_rwlock_);
-  if (used_hosts_per_remote_dc_ > 0 || !skip_remote_dcs_for_local_cl) {
-    LOG_WARN("Remote multi-dc settings have been deprecated and will be removed"
-             " in the next major release");
-  }
 }
 
 RackAwarePolicy::~RackAwarePolicy() { uv_rwlock_destroy(&available_rwlock_); }
@@ -85,7 +78,7 @@ CassHostDistance RackAwarePolicy::distance(const Host::Ptr& host) const {
   }
 
   const CopyOnWriteHostVec& hosts = per_remote_dc_live_hosts_.get_hosts(host->rack());
-  size_t num_hosts = std::min(hosts->size(), used_hosts_per_remote_dc_);
+  size_t num_hosts = hosts->size();
   for (size_t i = 0; i < num_hosts; ++i) {
     if ((*hosts)[i]->address() == host->address()) {
       return CASS_HOST_DISTANCE_REMOTE;
@@ -161,16 +154,6 @@ void RackAwarePolicy::on_host_down(const Address& address) {
   available_.erase(address);
 }
 
-bool RackAwarePolicy::skip_remote_dcs_for_local_cl() const {
-  ScopedReadLock rl(&available_rwlock_);
-  return skip_remote_dcs_for_local_cl_;
-}
-
-size_t RackAwarePolicy::used_hosts_per_remote_dc() const {
-  ScopedReadLock rl(&available_rwlock_);
-  return used_hosts_per_remote_dc_;
-}
-
 const String& RackAwarePolicy::local_dc() const {
   ScopedReadLock rl(&available_rwlock_);
   return local_dc_;
@@ -232,11 +215,6 @@ static const Host::Ptr& get_next_host(const CopyOnWriteHostVec& hosts, size_t in
   return (*hosts)[index % hosts->size()];
 }
 
-static const Host::Ptr& get_next_host_bounded(const CopyOnWriteHostVec& hosts, size_t index,
-                                              size_t bound) {
-  return (*hosts)[index % std::min(hosts->size(), bound)];
-}
-
 static size_t get_hosts_size(const CopyOnWriteHostVec& hosts) { return hosts->size(); }
 
 RackAwarePolicy::RackAwareQueryPlan::RackAwareQueryPlan(const RackAwarePolicy* policy, CassConsistency cl,
@@ -257,7 +235,8 @@ Host::Ptr RackAwarePolicy::RackAwareQueryPlan::compute_next() {
     }
   }
 
-  if (policy_->skip_remote_dcs_for_local_cl_ && is_dc_local(cl_)) {
+  // Skip remote DCs for LOCAL_ consistency levels.
+  if (is_dc_local(cl_)) {
     return Host::Ptr();
   }
 
@@ -270,7 +249,7 @@ Host::Ptr RackAwarePolicy::RackAwareQueryPlan::compute_next() {
     while (remote_remaining_ > 0) {
       --remote_remaining_;
       const Host::Ptr& host(
-          get_next_host_bounded(hosts_, index_++, policy_->used_hosts_per_remote_dc_));
+          get_next_host(hosts_, index_++));
       if (policy_->is_host_up(host->address())) {
         return host;
       }
@@ -282,7 +261,7 @@ Host::Ptr RackAwarePolicy::RackAwareQueryPlan::compute_next() {
 
     PerDCHostMap::KeySet::iterator i = remote_dcs_->begin();
     hosts_ = policy_->per_remote_dc_live_hosts_.get_hosts(*i);
-    remote_remaining_ = std::min(get_hosts_size(hosts_), policy_->used_hosts_per_remote_dc_);
+    remote_remaining_ = get_hosts_size(hosts_);
     remote_dcs_->erase(i);
   }
 
