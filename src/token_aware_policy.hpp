@@ -54,7 +54,8 @@ private:
         , replicas_(replicas)
         , index_(start_index)
         , remaining_local_(replicas->size())
-        , remaining_remote_(replicas->size()) {}
+        , remaining_remote_(replicas->size())
+        , remaining_remote2_(replicas->size()) {}
 
     Host::Ptr compute_next();
 
@@ -65,6 +66,7 @@ private:
     size_t index_;
     size_t remaining_local_;
     size_t remaining_remote_;
+    size_t remaining_remote2_;
   };
 
   Random* random_;

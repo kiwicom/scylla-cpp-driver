@@ -105,10 +105,19 @@ Host::Ptr TokenAwarePolicy::TokenAwareQueryPlan::compute_next() {
     }
   }
 
+  while (remaining_remote2_ > 0) {
+    --remaining_remote2_;
+    const Host::Ptr& host((*replicas_)[index_++ % replicas_->size()]);
+    if (child_policy_->is_host_up(host->address()) &&
+        child_policy_->distance(host) == CASS_HOST_DISTANCE_REMOTE2) {
+      return host;
+    }
+  }
+
   Host::Ptr host;
   while ((host = child_plan_->compute_next())) {
     if (!contains(replicas_, host->address()) ||
-        child_policy_->distance(host) > CASS_HOST_DISTANCE_REMOTE) {
+        child_policy_->distance(host) > CASS_HOST_DISTANCE_REMOTE2) {
       return host;
     }
   }
