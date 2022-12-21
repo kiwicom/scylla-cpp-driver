@@ -3243,6 +3243,16 @@ cass_session_get_speculative_execution_metrics(const CassSession* session,
                                                CassSpeculativeExecutionMetrics* output);
 
 /**
+ * Gets the current count of inflight request to all hosts.
+ *
+ * @public @memberof CassSession
+ *
+ * @param[in] session
+ */
+CASS_EXPORT cass_uint64_t
+cass_session_get_inflight_request_count(const CassSession* session);
+
+/**
  * Get the client id.
  *
  * @public @memberof CassSession

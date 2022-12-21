@@ -169,6 +169,16 @@ void cass_session_get_speculative_execution_metrics(const CassSession* session,
 
 CassUuid cass_session_get_client_id(CassSession* session) { return session->client_id(); }
 
+cass_uint64_t cass_session_get_inflight_request_count(const CassSession* session) {
+  cass_uint64_t inflight_request_count = 0;
+  const HostMap hosts = session->cluster()->available_hosts();
+  for (HostMap::const_iterator it = hosts.begin(), end = hosts.end(); it != end; ++it) {
+    const Host::Ptr& host = it->second;
+    inflight_request_count += host->inflight_request_count();
+  }
+  return inflight_request_count;
+}
+
 } // extern "C"
 
 static inline bool least_busy_comp(const RequestProcessor::Ptr& a, const RequestProcessor::Ptr& b) {
