@@ -300,7 +300,7 @@ CassError cass_cluster_set_load_balance_dc_aware_n(CassCluster* cluster, const c
       String(local_dc, local_dc_length), used_hosts_per_remote_dc, !allow_remote_dcs_for_local_cl));
   return CASS_OK;
 }
-/*
+
 CassError cass_cluster_set_load_balance_rack_aware(CassCluster* cluster, const char* local_dc,
                                                  const char* local_rack,
                                                  unsigned used_hosts_per_remote_dc,
@@ -327,7 +327,7 @@ CassError cass_cluster_set_load_balance_rack_aware_n(CassCluster* cluster, const
       String(local_dc, local_dc_length), String(local_rack, local_rack_length), used_hosts_per_remote_dc, !allow_remote_dcs_for_local_cl));
   return CASS_OK;
 }
-*/
+
 void cass_cluster_set_token_aware_routing(CassCluster* cluster, cass_bool_t enabled) {
   cluster->config().set_token_aware_routing(enabled == cass_true);
 }
