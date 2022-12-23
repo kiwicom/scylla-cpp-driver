@@ -51,6 +51,25 @@ void TokenAwarePolicy::init(const Host::Ptr& connected_host, const HostMap& host
   ChainedLoadBalancingPolicy::init(connected_host, hosts, random, local_dc, local_rack);
 }
 
+static inline CopyOnWriteHostVec replicas_for_request(const String& keyspace,
+                                                      const RoutableRequest* request,
+                                                      const TokenMap* token_map) {
+  if (token_map == NULL || keyspace.empty()) {
+    return CopyOnWriteHostVec(NULL);
+  }
+  int64_t token_hint;
+  bool has_token_hint;
+  std::tie(token_hint, has_token_hint) = request->token_hint();
+  if (has_token_hint) {
+    return token_map->get_replicas_for_token(keyspace, token_hint);
+  }
+  String routing_key;
+  if (!request->get_routing_key(&routing_key)) {
+    return CopyOnWriteHostVec(NULL);
+  }
+  return token_map->get_replicas(keyspace, routing_key);
+}
+
 QueryPlan* TokenAwarePolicy::new_query_plan(const String& keyspace, RequestHandler* request_handler,
                                             const TokenMap* token_map) {
   if (request_handler != NULL) {
@@ -61,20 +80,15 @@ QueryPlan* TokenAwarePolicy::new_query_plan(const String& keyspace, RequestHandl
         case CQL_OPCODE_QUERY:
         case CQL_OPCODE_EXECUTE:
         case CQL_OPCODE_BATCH:
-          String routing_key;
-          if (request->get_routing_key(&routing_key) && !keyspace.empty()) {
-            if (token_map != NULL) {
-              CopyOnWriteHostVec replicas = token_map->get_replicas(keyspace, routing_key);
-              if (replicas && !replicas->empty()) {
-                if (random_ != NULL) {
-                  random_shuffle(replicas->begin(), replicas->end(), random_);
-                }
-                return new TokenAwareQueryPlan(
-                    child_policy_.get(),
-                    child_policy_->new_query_plan(keyspace, request_handler, token_map), replicas,
-                    index_);
-              }
+	  CopyOnWriteHostVec replicas = replicas_for_request(keyspace, request, token_map);
+          if (replicas && !replicas->empty()) {
+            if (random_ != NULL) {
+              random_shuffle(replicas->begin(), replicas->end(), random_);
             }
+            return new TokenAwareQueryPlan(
+                child_policy_.get(),
+                child_policy_->new_query_plan(keyspace, request_handler, token_map), replicas,
+                index_);
           }
           break;
       }

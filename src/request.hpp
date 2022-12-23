@@ -30,6 +30,7 @@
 
 #include <stdint.h>
 #include <utility>
+#include <tuple>
 
 namespace datastax { namespace internal { namespace core {
 
@@ -187,6 +188,15 @@ public:
   void set_host(const Address& host) { host_.reset(new Address(host)); }
   const Address* host() const { return host_.get(); }
 
+  void set_token_hint(const int64_t token) {
+    token_hint_ = token;
+    has_token_hint_ = true;
+  }
+
+  std::tuple<int64_t, bool> token_hint() const {
+    return std::make_tuple(token_hint_, has_token_hint_);
+  }
+
   virtual int encode(ProtocolVersion version, RequestCallback* callback, BufferVec* bufs) const = 0;
 
 private:
@@ -199,6 +209,8 @@ private:
   CustomPayload custom_payload_extra_;
   String profile_name_;
   ScopedPtr<Address> host_;
+  int64_t token_hint_;
+  bool has_token_hint_;
 
 private:
   DISALLOW_COPY_AND_ASSIGN(Request);

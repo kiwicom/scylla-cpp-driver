@@ -615,6 +615,8 @@ public:
 
   virtual const CopyOnWriteHostVec& get_replicas(const String& keyspace_name,
                                                  const String& routing_key) const;
+  virtual const CopyOnWriteHostVec& get_replicas_for_token(const String& keyspace_name,
+                                                           int64_t token) const;
 
   virtual String dump(const String& keyspace_name) const;
 
@@ -743,6 +745,38 @@ const CopyOnWriteHostVec& TokenMapImpl<Partitioner>::get_replicas(const String& 
 
   if (ks_it != replicas_.end()) {
     Token token = Partitioner::hash(routing_key);
+    const TokenReplicasVec& replicas = ks_it->second;
+    typename TokenReplicasVec::const_iterator replicas_it =
+        std::upper_bound(replicas.begin(), replicas.end(), TokenReplicas(token, no_replicas_dummy_),
+                         TokenReplicasCompare());
+    if (replicas_it != replicas.end()) {
+      return replicas_it->second;
+    } else if (!replicas.empty()) {
+      return replicas.front().second;
+    }
+  }
+
+  return no_replicas_dummy_;
+}
+
+template <>
+const CopyOnWriteHostVec& TokenMapImpl<RandomPartitioner>::get_replicas_for_token(const String& keyspace_name,
+                                                                                  int64_t token) const {
+	return no_replicas_dummy_;
+}
+
+template <>
+const CopyOnWriteHostVec& TokenMapImpl<ByteOrderedPartitioner>::get_replicas_for_token(const String& keyspace_name,
+                                                                                       int64_t token) const {
+	return no_replicas_dummy_;
+}
+
+template <>
+const CopyOnWriteHostVec& TokenMapImpl<Murmur3Partitioner>::get_replicas_for_token(const String& keyspace_name,
+                                                                                   int64_t token) const {
+  typename KeyspaceReplicaMap::const_iterator ks_it = replicas_.find(keyspace_name);
+
+  if (ks_it != replicas_.end()) {
     const TokenReplicasVec& replicas = ks_it->second;
     typename TokenReplicasVec::const_iterator replicas_it =
         std::upper_bound(replicas.begin(), replicas.end(), TokenReplicas(token, no_replicas_dummy_),
