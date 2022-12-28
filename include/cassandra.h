@@ -5348,6 +5348,19 @@ cass_statement_set_request_timeout(CassStatement* statement,
                                    cass_uint64_t timeout_ms);
 
 /**
+ * Sets the token hint for the statement.
+ *
+ * @public @memberof CassStatement
+ *
+ * @param[in] statement
+ * @param[in] token_hint End of the token range as a hint for full scan queries.
+ * @return CASS_OK if successful, otherwise an error occurred.
+ */
+CASS_EXPORT CassError
+cass_statement_set_token_hint(CassStatement* statement,
+                              cass_int64_t token_hint);
+
+/**
  * Sets whether the statement is idempotent. Idempotent statements are able to be
  * automatically retried after timeouts/errors and can be speculatively executed.
  *

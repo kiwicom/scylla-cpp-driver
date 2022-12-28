@@ -118,6 +118,11 @@ CassError cass_statement_set_request_timeout(CassStatement* statement, cass_uint
   return CASS_OK;
 }
 
+CassError cass_statement_set_token_hint(CassStatement* statement, cass_int64_t token_hint) {
+  statement->set_token_hint(token_hint);
+  return CASS_OK;
+}
+
 CassError cass_statement_set_is_idempotent(CassStatement* statement, cass_bool_t is_idempotent) {
   statement->set_is_idempotent(is_idempotent == cass_true);
   return CASS_OK;
