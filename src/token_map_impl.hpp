@@ -760,20 +760,23 @@ const CopyOnWriteHostVec& TokenMapImpl<Partitioner>::get_replicas(const String& 
 }
 
 template <>
-const CopyOnWriteHostVec& TokenMapImpl<RandomPartitioner>::get_replicas_for_token(const String& keyspace_name,
-                                                                                  int64_t token) const {
+inline const CopyOnWriteHostVec&
+TokenMapImpl<RandomPartitioner>::get_replicas_for_token(const String& keyspace_name,
+                                                        int64_t token) const {
 	return no_replicas_dummy_;
 }
 
 template <>
-const CopyOnWriteHostVec& TokenMapImpl<ByteOrderedPartitioner>::get_replicas_for_token(const String& keyspace_name,
-                                                                                       int64_t token) const {
+inline const CopyOnWriteHostVec&
+TokenMapImpl<ByteOrderedPartitioner>::get_replicas_for_token(const String& keyspace_name,
+                                                             int64_t token) const {
 	return no_replicas_dummy_;
 }
 
 template <>
-const CopyOnWriteHostVec& TokenMapImpl<Murmur3Partitioner>::get_replicas_for_token(const String& keyspace_name,
-                                                                                   int64_t token) const {
+inline const CopyOnWriteHostVec&
+TokenMapImpl<Murmur3Partitioner>::get_replicas_for_token(const String& keyspace_name,
+                                                         int64_t token) const {
   typename KeyspaceReplicaMap::const_iterator ks_it = replicas_.find(keyspace_name);
 
   if (ks_it != replicas_.end()) {
